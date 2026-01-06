@@ -14,14 +14,16 @@ export async function POST(
 
     const ably = new Ably.Rest(process.env.ABLY_API_KEY!);
 
-    try {
-        const imageUrl = await generateImageReal(prompt);
 
-        // We send this directly back to the specific player's channel/event
+    try {
+        const imageUrls = await generateImageReal(prompt);
+
+        // We send the array of candidates directly back to the specific player's channel/event
         const channel = ably.channels.get(`room:${code}`);
-        await channel.publish(`image-generated:${playerId}`, { imageUrl });
+        await channel.publish(`image-generated:${playerId}`, { imageUrls });
 
         return NextResponse.json({ success: true });
+
     } catch (error) {
         console.error(error);
         return NextResponse.json({ error: 'Generation failed' }, { status: 500 });

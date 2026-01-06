@@ -1,0 +1,13 @@
+.env
+
+# build folder
+/dist
+
+# dependencies
+/node_modules
+
+# yarn errors
+yarn-error.log
+
+# Sentry Auth Token
+.sentryclirc

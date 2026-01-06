@@ -1,0 +1,35 @@
+import { getServerSession } from "next-auth";
+import type { Game } from "database";
+
+import { getRoomInfo } from "@ai/utils/queries";
+import { authOptions } from "@ai/pages/api/auth/[...nextauth]";
+import { getRunningGame } from "@ai/utils/server-actions";
+import HomepageTemplate from "@ai/components/homepage-template";
+
+export default async function Invite({ params }: PageProps<"/invite/[code]">) {
+  const { code } = await params;
+
+  const roomInfo = await getRoomInfo(code);
+
+  const session = await getServerSession(authOptions());
+
+  let runningGame: Game | null = null;
+
+  if (session) {
+    const runningGameQuery = await getRunningGame({ session });
+
+    if (runningGameQuery) {
+      runningGame = runningGameQuery.game;
+    }
+  }
+
+  return (
+    <HomepageTemplate
+      session={session}
+      runningGame={runningGame}
+      roomInfo={roomInfo}
+      formLabel="Join Game"
+      type="INVITE"
+    />
+  );
+}

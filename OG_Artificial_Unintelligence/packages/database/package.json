@@ -1,0 +1,31 @@
+{
+  "name": "database",
+  "version": "0.0.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "prettier . --check --experimental-cli && eslint .",
+    "db:migrate:run": "tsx --env-file-if-exists=.env migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=.env seed.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "@auth/core": "^0.40.0",
+    "@types/node": "^25.0.3",
+    "drizzle-kit": "^0.31.8",
+    "eslint": "^9.39.2",
+    "eslint-config-custom": "workspace:*",
+    "prettier": "^3.7.4",
+    "tsconfig": "workspace:*",
+    "tsx": "^4.21.0",
+    "typescript": "5.9.3"
+  }
+}

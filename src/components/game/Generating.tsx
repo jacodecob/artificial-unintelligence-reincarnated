@@ -8,17 +8,20 @@ interface GeneratingProps {
     playerId: string;
 }
 
+
 export const Generating: React.FC<GeneratingProps> = ({ roomState, socket, playerId }) => {
     const [userInput, setUserInput] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
-    const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+    const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+    const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
     const [retryCount, setRetryCount] = useState(0);
     const [isSubmitted, setIsSubmitted] = useState(false);
 
     useEffect(() => {
-        const handleImageGenerated = ({ imageUrl }: { imageUrl: string }) => {
-            setGeneratedImage(imageUrl);
+        const handleImageGenerated = ({ imageUrls }: { imageUrls: string[] }) => {
+            setGeneratedImages(imageUrls);
             setIsGenerating(false);
+            setSelectedImageIndex(0); // Default to first one
         };
 
         socket.on(SERVER_EVENTS.IMAGE_GENERATED, handleImageGenerated);
@@ -39,16 +42,18 @@ export const Generating: React.FC<GeneratingProps> = ({ roomState, socket, playe
         if (!userInput || !currentBattle) return;
 
         setIsGenerating(true);
+        setGeneratedImages([]);
+        setSelectedImageIndex(null);
         socket.emit(CLIENT_EVENTS.GENERATE_IMAGE, { prompt: userInput });
     };
 
     const handleSubmit = () => {
-        if (!generatedImage || !currentBattle) return;
+        if (selectedImageIndex === null || generatedImages.length === 0 || !currentBattle) return;
 
         socket.emit(CLIENT_EVENTS.SUBMIT_GENERATION, {
             roomCode: roomState.roomCode,
             promptId: currentBattle.prompt.id,
-            imageUrl: generatedImage
+            imageUrl: generatedImages[selectedImageIndex]
         });
 
         setIsSubmitted(true);
@@ -69,7 +74,7 @@ export const Generating: React.FC<GeneratingProps> = ({ roomState, socket, playe
     }
 
     return (
-        <div className="flex flex-col items-center min-h-screen p-4 bg-zinc-950 text-white font-mono no-select">
+        <div className="flex flex-col items-center min-h-screen p-4 bg-zinc-950 text-white font-mono no-select overflow-x-hidden">
             <div className="w-full max-w-lg mt-4 flex flex-col gap-4">
                 {/* Header Stats */}
                 <div className="flex justify-between items-center px-2">
@@ -95,7 +100,7 @@ export const Generating: React.FC<GeneratingProps> = ({ roomState, socket, playe
                         "{currentBattle.prompt.text}"
                     </h2>
 
-                    {!generatedImage ? (
+                    {generatedImages.length === 0 ? (
                         <div className="space-y-6">
                             <div>
                                 <label className="block text-zinc-600 uppercase text-[10px] font-black mb-2 tracking-[0.2em] pl-1">Describe the vibe</label>
@@ -131,20 +136,34 @@ export const Generating: React.FC<GeneratingProps> = ({ roomState, socket, playe
                         </div>
                     ) : (
                         <div className="space-y-6 animate-in slide-in-from-bottom-8 fade-in duration-500">
-                            <div className="aspect-square w-full bg-black rounded-2xl border-4 border-zinc-800 overflow-hidden relative shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
-                                <img src={generatedImage} alt="Generated Art" className="w-full h-full object-cover" />
-                                {isGenerating && (
-                                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center backdrop-blur-md">
-                                        <Loader2 className="animate-spin text-yellow-500 mb-4" size={48} />
-                                        <span className="text-yellow-500 font-black uppercase tracking-widest text-sm italic">Redrawing...</span>
-                                    </div>
-                                )}
+                            <div className="flex flex-col gap-4">
+                                <label className="block text-zinc-600 uppercase text-[10px] font-black mb-1 tracking-[0.2em] pl-1 text-center">Pick your favorite realization</label>
+
+                                <div className="grid grid-cols-2 gap-4 h-64 md:h-80">
+                                    {generatedImages.map((img, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setSelectedImageIndex(idx)}
+                                            className={`relative aspect-square rounded-2xl border-4 overflow-hidden transition-all transform hover:scale-[1.02] active:scale-95 ${selectedImageIndex === idx
+                                                    ? 'border-yellow-400 ring-4 ring-yellow-400/20 shadow-2xl z-10'
+                                                    : 'border-zinc-800 grayscale hover:grayscale-0'
+                                                }`}
+                                        >
+                                            <img src={img} alt={`Candidate ${idx + 1}`} className="w-full h-full object-cover" />
+                                            {selectedImageIndex === idx && (
+                                                <div className="absolute top-2 right-2 bg-yellow-400 text-black p-1 rounded-full border-2 border-black">
+                                                    <Sparkles size={16} fill="currentColor" />
+                                                </div>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <button
                                     onClick={() => {
-                                        setGeneratedImage(null);
+                                        setGeneratedImages([]);
                                         setRetryCount(prev => prev + 1);
                                     }}
                                     disabled={retryCount >= 1 || isGenerating}
@@ -154,16 +173,19 @@ export const Generating: React.FC<GeneratingProps> = ({ roomState, socket, playe
                                         }`}
                                 >
                                     <RefreshCcw size={18} />
-                                    Retry {retryCount < 1 ? '(1)' : '(0)'}
+                                    Regen {retryCount < 1 ? '(1)' : '(0)'}
                                 </button>
 
                                 <button
                                     onClick={handleSubmit}
-                                    disabled={isGenerating}
-                                    className="h-[68px] bg-yellow-400 text-black border-2 border-black rounded-2xl flex items-center justify-center gap-2 font-black uppercase text-sm tracking-widest shadow-[0_6px_0px_0px_#ca8a04] active:translate-y-1 active:shadow-[0_2px_0px_0px_#ca8a04] transition-all"
+                                    disabled={isGenerating || selectedImageIndex === null}
+                                    className={`h-[68px] rounded-2xl flex items-center justify-center gap-2 font-black uppercase text-sm tracking-widest transition-all border-2 ${selectedImageIndex !== null
+                                            ? 'bg-yellow-400 text-black border-black shadow-[0_6px_0px_0px_#ca8a04] active:translate-y-1 active:shadow-[0_2px_0px_0px_#ca8a04]'
+                                            : 'bg-zinc-800 text-zinc-600 border-zinc-900 opacity-50 cursor-not-allowed'
+                                        }`}
                                 >
                                     <Send size={18} />
-                                    Submit
+                                    Submit Selected
                                 </button>
                             </div>
                         </div>
@@ -173,3 +195,4 @@ export const Generating: React.FC<GeneratingProps> = ({ roomState, socket, playe
         </div>
     );
 };
+

@@ -94,8 +94,8 @@ export const JoinScreen: React.FC<JoinScreenProps> = ({ socket }) => {
                                     onClick={() => handleAction('CREATE')}
                                     disabled={!nickname}
                                     className={`w-full h-[72px] rounded-2xl flex items-center justify-center gap-3 transition-all font-black uppercase text-xl border-2 ${nickname
-                                            ? 'bg-yellow-400 text-black border-black shadow-[0_8px_0px_0px_#ca8a04] active:translate-y-1 active:shadow-[0_4px_0px_0px_#ca8a04]'
-                                            : 'bg-zinc-800 text-zinc-600 border-zinc-800 opacity-50 grayscale cursor-not-allowed'
+                                        ? 'bg-yellow-400 text-black border-black shadow-[0_8px_0px_0px_#ca8a04] active:translate-y-1 active:shadow-[0_4px_0px_0px_#ca8a04]'
+                                        : 'bg-zinc-800 text-zinc-600 border-zinc-800 opacity-50 grayscale cursor-not-allowed'
                                         }`}
                                 >
                                     <Plus size={24} strokeWidth={3} />
@@ -127,8 +127,8 @@ export const JoinScreen: React.FC<JoinScreenProps> = ({ socket }) => {
                                         onClick={() => handleAction('JOIN')}
                                         disabled={roomCode.length !== 4 || !nickname}
                                         className={`h-[64px] rounded-2xl flex items-center justify-center gap-2 font-black uppercase border-2 transition-all ${roomCode.length === 4 && nickname
-                                                ? 'bg-yellow-400 text-black border-black shadow-[0_6px_0px_0px_#ca8a04] active:translate-y-1 active:shadow-[0_2px_0px_0px_#ca8a04]'
-                                                : 'bg-zinc-800 text-zinc-600 border-zinc-700 opacity-50 grayscale shadow-none'
+                                            ? 'bg-yellow-400 text-black border-black shadow-[0_6px_0px_0px_#ca8a04] active:translate-y-1 active:shadow-[0_2px_0px_0px_#ca8a04]'
+                                            : 'bg-zinc-800 text-zinc-600 border-zinc-700 opacity-50 grayscale shadow-none'
                                             }`}
                                     >
                                         Join
@@ -140,11 +140,7 @@ export const JoinScreen: React.FC<JoinScreenProps> = ({ socket }) => {
                     </div>
                 </div>
 
-                <div className="mt-10 flex flex-col items-center gap-2 relative">
-                    <p className="text-zinc-700 text-[9px] font-black uppercase tracking-[0.3em] bg-black/40 px-4 py-1.5 rounded-full border border-zinc-800/50">
-                        Powered by Gemini 2.0 Flash
-                    </p>
-                </div>
+
             </div>
         </div>
     );

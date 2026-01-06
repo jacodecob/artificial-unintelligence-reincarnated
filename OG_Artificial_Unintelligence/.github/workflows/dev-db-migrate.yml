@@ -1,0 +1,50 @@
+name: Run Development Database Migrations
+
+on:
+  push:
+    branches: ["dev"]
+
+jobs:
+  build:
+    name: Build and Run Migrations
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+      POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+      NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+    steps:
+      - name: 🏗 Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.2
+
+      - name: 🏗 Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+          cache: "pnpm"
+
+      - name: 👷 Install dependencies
+        run: pnpm install
+
+      # - name: 📀 Install Playwright Browsers
+      #   run: npx playwright install --with-deps
+
+      - name: 🥾 Run db migrations
+        working-directory: "./packages/database"
+        run: pnpm db:migrate:run
