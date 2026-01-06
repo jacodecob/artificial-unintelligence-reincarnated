@@ -1,87 +1,90 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Ensure you have GEMINI_API_KEY set in your .env
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const generateImageReal = async (userPrompt: string): Promise<string[]> => {
     if (!ai) {
+        console.error("AI Service Error: Missing API Key");
         throw new Error("GEMINI_API_KEY is not set.");
     }
 
     try {
-        // Step 1: Use Gemini 2.5 Flash to expand the prompt for "Artificial Unintelligence" vibes
-        console.log("Expanding prompt with Gemini 2.5 Flash...");
+        // --- STEP 1: PROMPT EXPANSION (Text) ---
+        // We use Gemini 2.5 Flash for its speed and "intelligence" to make the prompt funny/weird.
+        console.log(`[AI Service] Expanding prompt: "${userPrompt}"`);
 
-        const expansionResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [{
-                role: 'user',
-                parts: [{
-                    text: `You are an expert prompt engineer for a goofy AI game called "Artificial Unintelligence".
-                    The game's humor comes from AI interpretations being surreal, glitched, and "off".
-                    Take this user vibe: "${userPrompt}"
-                    Expand it into a very detailed but surreal image prompt (max 400 characters).
-                    Use keywords that induce a low-fidelity, amateur, or distorted digital art style.
-                    Return ONLY the expanded prompt string, nothing else.`
-                }]
-            }]
-        });
+        let finalPrompt = userPrompt;
 
-        // Safe extraction of text from the new SDK response structure
-        const expandedPromptText = expansionResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || userPrompt;
-
-        const STYLE_MODIFIERS = [
-            "digital art style",
-            "low fidelity",
-            "vibrant but slightly clashing colors",
-            "surreal humor",
-            "amateur digital collage aesthetic",
-            "glitch art textures"
-        ].join(", ");
-
-        const FINAL_PROMPT = `${expandedPromptText}. ${STYLE_MODIFIERS}`;
-        console.log("Generating candidates with prompt:", FINAL_PROMPT);
-
-        // Step 2: Generate TWO images using Gemini 2.5 Flash Image (Nano Banana)
-        // We run these in parallel because the API typically returns one optimal image per request
-        // and we want to force two distinct generations for the game mechanic.
-        const imagePromises = [1, 2].map(async () => {
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+        try {
+            const expansionResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
                 contents: [{
                     role: 'user',
-                    parts: [{ text: FINAL_PROMPT }]
+                    parts: [{
+                        text: `You are a surrealist artist AI. 
+                        Rephrase this concept into a short, vivid, and slightly weird image prompt description: "${userPrompt}".
+                        Keep it under 40 words. Do not add commentary. Just the description.`
+                    }]
                 }]
             });
 
-            // Extract the inline image data
-            const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-
-            if (part && part.inlineData && part.inlineData.data) {
-                const mimeType = part.inlineData.mimeType || 'image/png';
-                return `data:${mimeType};base64,${part.inlineData.data}`;
+            // Extract text safely
+            const expandedText = expansionResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (expandedText) {
+                finalPrompt = expandedText;
             }
-            throw new Error("No inline image data found in response");
+        } catch (textError) {
+            console.warn("[AI Service] Prompt expansion failed, using original prompt:", textError);
+            // We continue with the original prompt if expansion fails
+        }
+
+        // Add the specific style modifiers for the game
+        const imagePrompt = `${finalPrompt}, digital art style, low fidelity, surrealist humor, glitch art aesthetics, 4k`;
+        console.log(`[AI Service] Generating images with prompt: "${imagePrompt}"`);
+
+        // --- STEP 2: IMAGE GENERATION (Image) ---
+        // We use Imagen 3.0 via the generateImages method. 
+        // Gemini 2.5 cannot do this step directly.
+        const imageResponse = await ai.models.generateImages({
+            model: 'imagen-3.0-generate-001',
+            prompt: imagePrompt,
+            config: {
+                numberOfImages: 2, // Ask for 2 images directly
+                aspectRatio: '1:1',
+                outputMimeType: 'image/jpeg'
+            }
         });
 
-        // Wait for both to finish
-        const results = await Promise.all(imagePromises);
-
-        if (results.length > 0) {
-            return results;
+        // Extract images from the Imagen response format
+        // The SDK returns base64 images in the response.generatedImages array
+        if (imageResponse.generatedImages && imageResponse.generatedImages.length > 0) {
+            return imageResponse.generatedImages.map(img => {
+                const imageBytes = (img as any).image?.imageBytes;
+                if (imageBytes) {
+                    // Convert Uint8Array or base64 string to data URL
+                    const base64 = typeof imageBytes === 'string'
+                        ? imageBytes
+                        : Buffer.from(imageBytes).toString('base64');
+                    return `data:image/jpeg;base64,${base64}`;
+                }
+                return "/images/error_robot.png";
+            });
         }
 
-        throw new Error("No valid images generated");
+        throw new Error("No images returned from Imagen API");
 
     } catch (error: any) {
-        console.error("AI Generation Error details:", error);
-
-        // Detailed logging for debugging
+        console.error("----------------------------------------");
+        console.error("[AI Service] CRITICAL ERROR:");
+        console.error(error);
         if (error.response) {
-            console.error("API Response Error:", JSON.stringify(error.response, null, 2));
+            console.error("API Response Details:", JSON.stringify(error.response, null, 2));
         }
+        console.error("----------------------------------------");
 
-        // Return a pair of error images if generation fails so the game doesn't crash
+        // Return the placeholders so the game doesn't crash
         return ["/images/error_robot.png", "/images/error_robot.png"];
     }
 };
