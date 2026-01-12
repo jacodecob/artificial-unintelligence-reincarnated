@@ -4,11 +4,12 @@ import { Plus, Users, ArrowRight } from 'lucide-react';
 
 interface JoinScreenProps {
     socket: GameSocket | null;
+    resetPlayerId: () => void;
 }
 
 const AVATARS = ['🤡', '🤖', '👻', '🐙', '🦖', '🦄', '🧟', '🍕'];
 
-export const JoinScreen: React.FC<JoinScreenProps> = ({ socket }) => {
+export const JoinScreen: React.FC<JoinScreenProps> = ({ socket, resetPlayerId }) => {
     const [nickname, setNickname] = useState('');
     const [roomCode, setRoomCode] = useState('');
     const [avatar, setAvatar] = useState(AVATARS[0]);
@@ -140,8 +141,18 @@ export const JoinScreen: React.FC<JoinScreenProps> = ({ socket }) => {
                     </div>
                 </div>
 
-
+                {/* Dev Mode Identity Reset */}
+                <div className="mt-8 pt-6 border-t border-zinc-800/50 flex flex-col items-center gap-3">
+                    <p className="text-[9px] text-zinc-700 font-bold uppercase tracking-[0.3em]">Testing multiple tabs?</p>
+                    <button
+                        onClick={resetPlayerId}
+                        className="text-[10px] text-zinc-500 hover:text-yellow-400 transition-colors uppercase font-black tracking-widest bg-zinc-800/30 px-4 py-2 rounded-full border border-zinc-800 hover:border-yellow-400/50"
+                    >
+                        Switch to New Identity
+                    </button>
+                </div>
             </div>
         </div>
     );
+
 };

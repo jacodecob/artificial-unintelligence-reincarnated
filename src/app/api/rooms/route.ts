@@ -17,6 +17,8 @@ export async function POST() {
         prompts: [],
         battles: [],
         currentBattleIndex: 0,
+        currentRound: 1,
+        totalRounds: 3,
         timer: 0,
         updatedAt: Date.now(),
     };

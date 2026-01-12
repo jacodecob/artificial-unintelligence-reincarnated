@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import { generateImageReal } from '@/services/aiService';
-import Ably from 'ably';
+import { Redis } from '@upstash/redis';
+import { nanoid } from 'nanoid';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
+
+const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 export async function POST(
     request: Request,
@@ -12,20 +18,32 @@ export async function POST(
     const { code } = await params;
     const { prompt, playerId } = await request.json();
 
-    const ably = new Ably.Rest(process.env.ABLY_API_KEY!);
-
-
     try {
-        const imageUrls = await generateImageReal(prompt);
+        console.log(`[Generate Route] Starting generation for room ${code}, player ${playerId}`);
+        const base64Images = await generateImageReal(prompt);
+        console.log(`[Generate Route] Images generated: ${base64Images.length}`);
 
-        // We send the array of candidates directly back to the specific player's channel/event
-        const channel = ably.channels.get(`room:${code}`);
-        await channel.publish(`image-generated:${playerId}`, { imageUrls });
+        // Store images in Redis and return URLs
+        // This solves the "Payload Too Large" (413/400) error when submitting to Next.js/Ably
+        const imageUrls = await Promise.all(base64Images.map(async (base64) => {
+            if (base64.startsWith('/images/')) return base64; // Error placeholders
 
-        return NextResponse.json({ success: true });
+            const imageId = nanoid();
+            const key = `image:${imageId}`;
 
-    } catch (error) {
-        console.error(error);
-        return NextResponse.json({ error: 'Generation failed' }, { status: 500 });
+            // expire in 24 hours
+            await redis.set(key, base64, { ex: 86400 });
+
+            // Return the local URL
+            // We need absolute URL for some cases? No, relative is fine for the app.
+            // But let's verify if the client uses it in <img src="...">. Yes.
+            return `/api/images/${imageId}`;
+        }));
+
+        return NextResponse.json({ success: true, imageUrls });
+
+    } catch (error: any) {
+        console.error("[Generate Route] Error:", error);
+        return NextResponse.json({ error: 'Generation failed', details: error.message }, { status: 500 });
     }
 }

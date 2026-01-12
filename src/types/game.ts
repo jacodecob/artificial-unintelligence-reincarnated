@@ -29,6 +29,7 @@ export interface Battle {
     generationB?: Generation;
     votesA: number;
     votesB: number;
+    voterIds: string[]; // Track who has voted to enable auto-advance
 }
 
 export interface RoomState {
@@ -38,6 +39,8 @@ export interface RoomState {
     prompts: Prompt[];
     battles: Battle[];
     currentBattleIndex: number;
+    currentRound: number;      // 1-indexed current round (1, 2, 3)
+    totalRounds: number;       // Total rounds in the game (default: 3)
     timer: number;
     updatedAt: number;
 }

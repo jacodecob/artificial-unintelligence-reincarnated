@@ -10,7 +10,7 @@ import { GameOver } from '@/components/game/GameOver';
 import { Loader2 } from 'lucide-react';
 
 export default function Home() {
-  const { socket, roomState, isConnected, playerId } = useSocket();
+  const { socket, roomState, isConnected, playerId, resetPlayerId } = useSocket();
 
   if (!isConnected) {
     return (
@@ -24,8 +24,9 @@ export default function Home() {
   }
 
   if (!roomState) {
-    return <JoinScreen socket={socket} />;
+    return <JoinScreen socket={socket} resetPlayerId={resetPlayerId} />;
   }
+
 
   // Handle Game States
   switch (roomState.state) {
@@ -35,15 +36,27 @@ export default function Home() {
     case 'INSTRUCTION':
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-zinc-950 text-white font-mono text-center">
+          <div className="bg-yellow-400 text-black px-6 py-2 rounded-full font-black uppercase text-sm tracking-widest mb-6">
+            Round {roomState.currentRound || 1} of {roomState.totalRounds || 3}
+          </div>
           <h2 className="text-6xl font-black text-yellow-500 mb-8 uppercase italic tracking-tighter">
             How to play
           </h2>
           <p className="text-2xl font-bold max-w-2xl leading-relaxed text-zinc-300 mb-12">
             You will be given a prompt. Type a description to generate an image. Try to be funny. The AI is not smart.
           </p>
-          <div className="text-zinc-500 uppercase font-black text-xl animate-bounce">
+          <div className="text-zinc-500 uppercase font-black text-xl animate-bounce mb-8">
             Starting in {roomState.timer}s...
           </div>
+
+          {roomState.players.find(p => p.id === playerId)?.isHost && (
+            <button
+              onClick={() => socket.emit('CLIENT_SKIP_TIMER', {})}
+              className="px-8 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl font-bold uppercase tracking-widest transition-all border-2 border-zinc-700"
+            >
+              Skip Wait
+            </button>
+          )}
         </div>
       );
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getRoom, saveRoom } from '@/lib/gameServer';
+import { getRoom, saveRoom, updateRoom } from '@/lib/gameServer';
 import { RoomState, Battle, GameState } from '@/types/game';
 
 const INITIAL_TIMER: Record<GameState, number> = {
@@ -17,60 +17,87 @@ export async function POST(
 ) {
     const { code } = await params;
     const { action, payload } = await request.json();
-    const room = await getRoom(code);
 
-    if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+    try {
+        await updateRoom(code, async (room: RoomState) => {
+            switch (action) {
+                case 'START_GAME':
+                    await transitionState(room, 'INSTRUCTION', false);
+                    break;
 
-    switch (action) {
-        case 'START_GAME':
-            await transitionState(room, 'INSTRUCTION');
-            break;
+                case 'SKIP_TIMER':
+                    console.log(`[Action Route] Skiping timer for room ${code} (Current State: ${room.state})`);
+                    await handleTimerExpiry(room);
+                    break;
 
-        case 'EXPIRE_TIMER':
-            await handleTimerExpiry(room);
-            break;
+                case 'EXPIRE_TIMER':
+                    const intendedState = payload?.state;
+                    if (intendedState && intendedState !== room.state) {
+                        console.log(`[Action Route] Ignoring EXPIRE_TIMER for ${intendedState} because room is already in ${room.state}`);
+                        break;
+                    }
+                    await handleTimerExpiry(room);
+                    break;
 
-        case 'TICK':
-            // Manual tick from client to sync state
-            if (room.timer > 0) {
-                room.timer--;
-                // Don't broadcast every tick to save on Ably messages, 
-                // only save to redis or just let client handle it.
-                // For simplicity, we just save to redis.
-                await saveRoom(room);
+                case 'SUBMIT_GENERATION':
+                    const { playerId, imageUrl, promptId } = payload;
+                    room.battles.forEach(battle => {
+                        if (battle.prompt.id === promptId) {
+                            if (battle.playerA === playerId) battle.generationA = { playerId, promptId, imageUrl, votes: 0 };
+                            if (battle.playerB === playerId) battle.generationB = { playerId, promptId, imageUrl, votes: 0 };
+                        }
+                    });
+
+                    const allDone = room.battles.length > 0 && room.battles.every(b => b.generationA && b.generationB);
+                    if (allDone && room.state === 'GENERATING') {
+                        console.log(`[Action Route] All generations submitted for room ${code}. Transitioning to BATTLE.`);
+                        await transitionState(room, 'BATTLE', false);
+                    }
+                    break;
+
+                case 'VOTE':
+                    const { choice, battleIndex, voterId } = payload;
+                    const battle = room.battles[battleIndex];
+                    if (battle) {
+                        // Initialize voterIds if needed
+                        if (!battle.voterIds) battle.voterIds = [];
+
+                        // Prevent double voting
+                        if (battle.voterIds.includes(voterId)) {
+                            console.log(`[Action Route] Player ${voterId} already voted in battle ${battleIndex}`);
+                            break;
+                        }
+
+                        // Record vote
+                        if (choice === 'A') battle.votesA++;
+                        else battle.votesB++;
+                        battle.voterIds.push(voterId);
+
+                        // Check if all eligible voters have voted
+                        // Eligible = all players except the two in this battle
+                        const eligibleVoters = room.players.filter(
+                            p => p.id !== battle.playerA && p.id !== battle.playerB
+                        );
+                        const allVotesIn = eligibleVoters.every(p => battle.voterIds.includes(p.id));
+
+                        if (allVotesIn && room.state === 'BATTLE') {
+                            console.log(`[Action Route] All ${eligibleVoters.length} votes in for battle ${battleIndex}. Auto-advancing to REVEAL.`);
+                            await transitionState(room, 'REVEAL', false);
+                        }
+                    }
+                    break;
             }
-            break;
+        });
 
-        case 'SUBMIT_GENERATION':
-            const { playerId, imageUrl, promptId } = payload;
-            room.battles.forEach(battle => {
-                if (battle.prompt.id === promptId) {
-                    if (battle.playerA === playerId) battle.generationA = { playerId, promptId, imageUrl, votes: 0 };
-                    if (battle.playerB === playerId) battle.generationB = { playerId, promptId, imageUrl, votes: 0 };
-                }
-            });
-
-            const allDone = room.battles.every(b => b.generationA && b.generationB);
-            if (allDone && room.state === 'GENERATING') {
-                await transitionState(room, 'BATTLE');
-            } else {
-                await saveRoom(room);
-            }
-            break;
-
-        case 'VOTE':
-            const { choice, battleIndex } = payload;
-            const battle = room.battles[battleIndex];
-            if (choice === 'A') battle.votesA++;
-            else battle.votesB++;
-            await saveRoom(room);
-            break;
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error(`[Action Route] Error processing action ${action}:`, error);
+        return NextResponse.json({ error: error.message || 'Action failed' }, { status: 400 });
     }
-
-    return NextResponse.json({ success: true });
 }
 
-async function transitionState(room: RoomState, newState: GameState) {
+
+async function transitionState(room: RoomState, newState: GameState, save = true) {
     room.state = newState;
     room.timer = INITIAL_TIMER[newState];
     room.updatedAt = Date.now();
@@ -83,13 +110,15 @@ async function transitionState(room: RoomState, newState: GameState) {
         calculateBattleScores(room);
     }
 
-    await saveRoom(room);
+    if (save) {
+        await saveRoom(room);
+    }
 }
 
 async function handleTimerExpiry(room: RoomState) {
     switch (room.state) {
         case 'INSTRUCTION':
-            await transitionState(room, 'GENERATING');
+            await transitionState(room, 'GENERATING', false);
             break;
         case 'GENERATING':
             // Auto-fill missing
@@ -101,35 +130,73 @@ async function handleTimerExpiry(room: RoomState) {
                     battle.generationB = { playerId: battle.playerB, promptId: battle.prompt.id, imageUrl: '/images/error_robot.png', votes: 0 };
                 }
             });
-            await transitionState(room, 'BATTLE');
+            await transitionState(room, 'BATTLE', false);
             break;
         case 'BATTLE':
-            await transitionState(room, 'REVEAL');
+            await transitionState(room, 'REVEAL', false);
             break;
         case 'REVEAL':
             if (room.currentBattleIndex < room.battles.length - 1) {
+                // More battles in this round
                 room.currentBattleIndex++;
-                await transitionState(room, 'BATTLE');
+                await transitionState(room, 'BATTLE', false);
             } else {
-                await transitionState(room, 'GAME_OVER');
+                // All battles in this round are done
+                // Check if there are more rounds
+                const totalRounds = room.totalRounds || 3;
+                const currentRound = room.currentRound || 1;
+
+                if (currentRound < totalRounds) {
+                    // Start next round
+                    room.currentRound = currentRound + 1;
+                    room.currentBattleIndex = 0;
+                    console.log(`[Action Route] Round ${currentRound} complete. Starting round ${room.currentRound}/${totalRounds}`);
+                    await transitionState(room, 'INSTRUCTION', false);
+                } else {
+                    // Game over - all rounds complete
+                    console.log(`[Action Route] All ${totalRounds} rounds complete. Game over!`);
+                    await transitionState(room, 'GAME_OVER', false);
+                }
             }
             break;
     }
 }
 
+
 function assignPrompts(room: RoomState) {
+    // Fresh, open-ended prompts - inspired by OG game style but all new
+    // Fresh, simpler, and funnier prompts for better accessibility
     const promptTexts = [
-        "The creature hidden in IKEA", "A canceled children's toy", "The worst pizza topping",
-        "Surreal fashion show", "Cyberpunk farmer", "A dog's fever dream",
-        "Intergalactic DMV", "Haunted toaster", "A midlife crisis for a dragon",
-        "Viking at a tech support desk", "The ghost of a Victorian child discovering a fidget spinner",
-        "Medieval medical procedure performed by pigeons", "Extreme ironing in a volcano",
-        "A fancy dinner party attended only by capybaras", "The secret life of garden gnomes",
-        "Steampunk underwater city", "A world where everyone is a literal potato",
-        "Cat conducting a symphony of meows", "Renaissance painting of a guy eating a Big Mac",
-        "Cybernetic Bigfoot", "The DMV (Department of Mythical Vehicles)",
-        "A knight in shining armor fighting a Roomba", "Alien abduction but the spaceship is just a giant taco",
-        "Samurai pizza delivery"
+        "A suspicious looking potato",
+        "The Queen of England breakdancing",
+        "A cat running for president",
+        "An alien trying to order pizza",
+        "A depressed toaster",
+        "The awkward silence at a dinner party",
+        "A ghost who is bad at haunting",
+        "A superhero whose power is mild inconvenience",
+        "The worst birthday party ever",
+        "A hamster leading a revolution",
+        "A banana slipping on a person",
+        "A fish riding a bicycle",
+        "A very confused penguin",
+        "A snowman in a sauna",
+        "A slightly threatening cloud",
+        "The definition of boredom",
+        "A karaoke night gone wrong",
+        "A ninja failing stealth mode",
+        "A dragon who hoards socks",
+        "A vampire at a beach party",
+        "A robot trying to drink water",
+        "A wizard who only knows one spell",
+        "A zombie on a diet",
+        "A skeleton trying to look cool",
+        "A werewolf at the groomers",
+        "A pigeon planning world domination",
+        "The most expensive mistake ever",
+        "A really bad disguise",
+        "A time traveler confused by a smartphone",
+        "A medieval knight at a drive-thru"
     ].sort(() => Math.random() - 0.5);
 
     room.battles = [];
@@ -142,7 +209,8 @@ function assignPrompts(room: RoomState) {
             playerA: playerA.id,
             playerB: playerB.id,
             votesA: 0,
-            votesB: 0
+            votesB: 0,
+            voterIds: []
         });
     }
 }
